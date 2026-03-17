@@ -1,9 +1,17 @@
 ﻿using Microsoft.AspNetCore.Mvc;
+using System.Linq;
 
 [ApiController]
 [Route("api/[controller]")]
 public class HelloClickMeController : ControllerBase
 {
+    private readonly MyDbContext _db;
+
+    public HelloClickMeController(MyDbContext db)
+    {
+        _db = db;
+    }
+
     [HttpGet]
     public string Get()
     {
@@ -23,12 +31,17 @@ public class HelloClickMeController : ControllerBase
         }
     }
 
-    public static string Message(string lng)
+    private string Message(string lng)
     {
-        throw new NotImplementedException();
+        var msg = _db.Messages.FirstOrDefault(m => m.Language == lng);
 
-
-        //fetch message in database base on lng
-        //EntityFreamwork core
+        if (msg != null)
+        {
+            return msg.Content;
+        }
+        else
+        {
+            return "Message not found";
+        }
     }
 }

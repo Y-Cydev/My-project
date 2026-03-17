@@ -14,8 +14,12 @@
       "DocumentGroups": [
         {
           "DockedWidth": 200,
-          "SelectedChildIndex": 0,
+          "SelectedChildIndex": 1,
           "Children": [
+            {
+              "$type": "Bookmark",
+              "Name": "ST:0:0:{1c4feeaa-4718-4aa9-859d-94ce25d182ba}"
+            },
             {
               "$type": "Document",
               "DocumentIndex": 0,
@@ -24,7 +28,7 @@
               "RelativeDocumentMoniker": "WebApplication1\\Controllers\\hello click me.cs",
               "ToolTip": "C:\\Users\\LAPTA\\OneDrive\\Desktop\\Click me project with F-B-D\\Back end\\WebApplication1\\WebApplication1\\Controllers\\hello click me.cs",
               "RelativeToolTip": "WebApplication1\\Controllers\\hello click me.cs",
-              "ViewState": "AgIAAAAAAAAAAAAAAAAAAB8AAAAKAAAAAAAAAA==",
+              "ViewState": "AgIAAB4AAAAAAAAAAAAkwC4AAAABAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
               "WhenOpened": "2026-02-12T14:31:30.458Z",
               "EditorCaption": ""
