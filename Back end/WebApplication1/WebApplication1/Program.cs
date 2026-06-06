@@ -39,4 +39,10 @@ if (app.Environment.IsDevelopment())
 
 app.MapControllers();
 
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<MyDbContext>();
+    db.Database.EnsureCreated();
+}
+
 app.Run();

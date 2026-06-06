@@ -18,5 +18,78 @@
         "StatusCode": 200
       }
     ]
+  },
+  {
+    "ContainingType": "HelloClickMeController",
+    "Method": "Create",
+    "RelativePath": "api/HelloClickMe",
+    "HttpMethod": "POST",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "dto",
+        "Type": "MessageDto",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "HelloClickMeController",
+    "Method": "Update",
+    "RelativePath": "api/HelloClickMe",
+    "HttpMethod": "PUT",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "dto",
+        "Type": "UpdateDto",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "HelloClickMeController",
+    "Method": "Delete",
+    "RelativePath": "api/HelloClickMe",
+    "HttpMethod": "DELETE",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "content",
+        "Type": "System.String",
+        "IsRequired": false
+      },
+      {
+        "Name": "language",
+        "Type": "System.String",
+        "IsRequired": false
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "HelloClickMeController",
+    "Method": "GetAll",
+    "RelativePath": "api/HelloClickMe/all",
+    "HttpMethod": "GET",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "HelloClickMeController",
+    "Method": "GetRandom",
+    "RelativePath": "api/HelloClickMe/random",
+    "HttpMethod": "GET",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [],
+    "ReturnTypes": []
   }
 ]

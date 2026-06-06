@@ -1,8 +1,8 @@
 {
   "version": 2,
-  "dgSpecHash": "A7bqTkJO+SI=",
+  "dgSpecHash": "CkRWdrNrCgU=",
   "success": true,
-  "projectFilePath": "C:\\Users\\LAPTA\\OneDrive\\Desktop\\Click me project with F-B-D\\Back end\\WebApplication1\\WebApplication1\\WebApplication1.csproj",
+  "projectFilePath": "E:\\Bureau\\Click me project with F-B-D\\Back end\\WebApplication1\\WebApplication1\\WebApplication1.csproj",
   "expectedPackageFiles": [
     "C:\\Users\\LAPTA\\.nuget\\packages\\azure.core\\1.47.1\\azure.core.1.47.1.nupkg.sha512",
     "C:\\Users\\LAPTA\\.nuget\\packages\\azure.identity\\1.14.2\\azure.identity.1.14.2.nupkg.sha512",
