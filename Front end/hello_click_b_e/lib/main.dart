@@ -1,19 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'dart:async';
 
 void main() {
-  runApp(MyApp());
+  runApp(const MyApp());
 }
 
 class MyApp extends StatelessWidget {
+  const MyApp({super.key});
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      debugShowCheckedModeBanner: false,
       home: Scaffold(
-        appBar: AppBar(
-          title: Text('Messages'),
-        ),
+        backgroundColor: Colors.white,
         body: MessagesPage(),
       ),
     );
@@ -38,133 +40,245 @@ class Message {
 
 class MessagesPage extends StatefulWidget {
   @override
-  _MessagesPageState createState() => _MessagesPageState();
+  State<MessagesPage> createState() => _MessagesPageState();
 }
 
 class _MessagesPageState extends State<MessagesPage> {
   final String baseUrl = 'http://localhost:5000/api/HelloClickMe';
+  final int pageSize = 10;
 
-  String _mode = 'idle';
-  String _boxTitle = 'New Instruction';
   List<Message> _messages = [];
+  int _currentPage = 1;
+  int _totalMessages = 0;
+  String _searchQuery = '';
+  Set<int> _selectedIds = {};
+  bool _isLoading = false;
 
-  final TextEditingController _contentController = TextEditingController();
-  final TextEditingController _newContentController = TextEditingController();
-  final TextEditingController _languageController = TextEditingController();
+  final TextEditingController _searchController = TextEditingController();
+  final TextEditingController _pageInputController = TextEditingController();
+  Timer? _debounce;
+
+  int get _totalPages => _totalMessages == 0 ? 1 : (_totalMessages / pageSize).ceil();
+
+  @override
+  void initState() {
+    super.initState();
+    _pageInputController.text = _currentPage.toString();
+    _loadMessages();
+  }
 
   @override
   void dispose() {
-    _contentController.dispose();
-    _newContentController.dispose();
-    _languageController.dispose();
+    _searchController.dispose();
+    _pageInputController.dispose();
+    _debounce?.cancel();
     super.dispose();
   }
 
-  void _resetBox() {
-    _contentController.clear();
-    _newContentController.clear();
-    _languageController.clear();
-  }
-
-  void _onNew() {
-    setState(() {
-      _mode = 'new';
-      _boxTitle = 'New Instruction';
-      _resetBox();
-    });
-  }
-
-  void _onUpgrade() {
-    setState(() {
-      _mode = 'upgrade';
-      _boxTitle = 'Upgrade Instruction';
-      _resetBox();
-    });
-  }
-
-  void _onDelete() {
-    setState(() {
-      _mode = 'delete';
-      _boxTitle = 'Delete Instruction';
-      _resetBox();
-    });
-  }
-
-  Future<void> _onShowAll() async {
+  Future<void> _loadMessages() async {
+    setState(() => _isLoading = true);
+    _pageInputController.text = _currentPage.toString();
     try {
-      var url = Uri.parse('$baseUrl/all');
-      var response = await http.get(url);
+      var params = <String, String>{
+        'page': _currentPage.toString(),
+        'pageSize': pageSize.toString(),
+      };
+      if (_searchQuery.isNotEmpty) {
+        params['search'] = _searchQuery;
+      }
+      var uri = Uri.parse('$baseUrl/all').replace(queryParameters: params);
+      var response = await http.get(uri);
       if (response.statusCode == 200) {
-        List<dynamic> data = json.decode(response.body);
+        var body = json.decode(response.body);
+        List<dynamic> data = body['data'];
         setState(() {
           _messages = data.map((e) => Message.fromJson(e)).toList();
+          _totalMessages = body['total'];
+          _selectedIds.clear();
+          _isLoading = false;
         });
+      } else {
+        setState(() => _isLoading = false);
+        _showSnackBar('Error: ${response.statusCode}');
       }
     } catch (e) {
-      _showSnackBar('Error: $e');
+      setState(() => _isLoading = false);
+      _showSnackBar('Connection error: $e');
     }
   }
 
-  Future<void> _onRandom() async {
-    try {
-      var url = Uri.parse('$baseUrl/random');
-      var response = await http.get(url);
-      if (response.statusCode == 200) {
-        var data = json.decode(response.body);
-        if (data is Map<String, dynamic> && data['id'] != null) {
-          setState(() {
-            _messages = [Message.fromJson(data)];
-          });
+  void _onSearchChanged(String value) {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 300), () {
+      if (!mounted) return;
+      setState(() {
+        _searchQuery = value;
+        _currentPage = 1;
+      });
+      _loadMessages();
+    });
+  }
+
+  void _goToPage(int page) {
+    if (page < 1 || page > _totalPages || page == _currentPage) return;
+    setState(() => _currentPage = page);
+    _loadMessages();
+  }
+
+  Future<void> _showAddDialog() async {
+    final contentController = TextEditingController();
+    final langController = TextEditingController();
+
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('New Message'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: contentController,
+              decoration: const InputDecoration(
+                labelText: 'Content',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: langController,
+              decoration: const InputDecoration(
+                labelText: 'Language',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Add'),
+          ),
+        ],
+      ),
+    );
+
+    if (result == true && mounted) {
+      try {
+        var response = await http.post(
+          Uri.parse(baseUrl),
+          headers: {'Content-Type': 'application/json'},
+          body: json.encode({
+            'content': contentController.text,
+            'language': langController.text,
+          }),
+        );
+        if (response.statusCode == 200) {
+          _showSnackBar('Message created');
+          _loadMessages();
         } else {
-          _showSnackBar(data['content'] ?? 'No messages');
+          _showSnackBar('Error: ${response.statusCode}');
         }
+      } catch (e) {
+        _showSnackBar('Failed: $e');
       }
-    } catch (e) {
-      _showSnackBar('Error: $e');
+    }
+    contentController.dispose();
+    langController.dispose();
+  }
+
+  Future<void> _showEditDialog() async {
+    if (_selectedIds.length != 1) return;
+    var msg = _messages.firstWhere((m) => m.id == _selectedIds.first);
+    if (mounted) {
+      _showEditDialogFor(msg);
     }
   }
 
-  Future<void> _onApply() async {
+  Future<void> _showEditDialogFor(Message msg) async {
+    final contentController = TextEditingController(text: msg.content);
+    final langController = TextEditingController(text: msg.language);
+
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Edit Message'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: contentController,
+              decoration: const InputDecoration(
+                labelText: 'Content',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: langController,
+              decoration: const InputDecoration(
+                labelText: 'Language',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+
+    if (result == true && mounted) {
+      try {
+        var response = await http.put(
+          Uri.parse('$baseUrl/${msg.id}'),
+          headers: {'Content-Type': 'application/json'},
+          body: json.encode({
+            'content': contentController.text,
+            'language': langController.text,
+          }),
+        );
+        if (response.statusCode == 200) {
+          _showSnackBar('Message updated');
+          _loadMessages();
+        } else {
+          _showSnackBar('Error: ${response.statusCode}');
+        }
+      } catch (e) {
+        _showSnackBar('Failed: $e');
+      }
+    }
+    contentController.dispose();
+    langController.dispose();
+  }
+
+  Future<void> _onDelete() async {
+    if (_selectedIds.isEmpty) return;
     try {
       http.Response response;
-      switch (_mode) {
-        case 'new':
-          response = await http.post(
-            Uri.parse(baseUrl),
-            headers: {'Content-Type': 'application/json'},
-            body: json.encode({
-              'content': _contentController.text,
-              'language': _languageController.text,
-            }),
-          );
-          break;
-        case 'upgrade':
-          response = await http.put(
-            Uri.parse(baseUrl),
-            headers: {'Content-Type': 'application/json'},
-            body: json.encode({
-              'originalContent': _contentController.text,
-              'newContent': _newContentController.text,
-              'language': _languageController.text,
-            }),
-          );
-          break;
-        case 'delete':
-          var url = Uri.parse(
-              '$baseUrl?content=${Uri.encodeComponent(_contentController.text)}&language=${Uri.encodeComponent(_languageController.text)}');
-          response = await http.delete(url);
-          break;
-        default:
-          return;
+      if (_selectedIds.length == 1) {
+        response = await http.delete(Uri.parse('$baseUrl/${_selectedIds.first}'));
+      } else {
+        response = await http.post(
+          Uri.parse('$baseUrl/delete-batch'),
+          headers: {'Content-Type': 'application/json'},
+          body: json.encode(_selectedIds.toList()),
+        );
       }
-
       if (response.statusCode == 200) {
-        var data = json.decode(response.body);
-        _showSnackBar(data['message'] ?? 'Success');
-        _resetBox();
-        setState(() {
-          _mode = 'idle';
-        });
+        _showSnackBar('Deleted successfully');
+        _loadMessages();
       } else {
         _showSnackBar('Error: ${response.statusCode}');
       }
@@ -174,139 +288,263 @@ class _MessagesPageState extends State<MessagesPage> {
   }
 
   void _showSnackBar(String message) {
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
+      SnackBar(content: Text(message), duration: const Duration(seconds: 2)),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(16.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+    return Column(
+      children: [
+        _buildHeader(),
+        _buildSearchAndPagination(),
+        _buildButtonBar(),
+        Expanded(child: _buildTable()),
+        if (_totalPages > 1) _buildPaginationBar(),
+        if (_totalPages <= 1) const SizedBox(height: 12),
+      ],
+    );
+  }
+
+  Widget _buildHeader() {
+    return Container(
+      width: double.infinity,
+      color: Colors.black,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      child: Row(
         children: [
-          Row(
-            children: [
-              ElevatedButton(onPressed: _onNew, child: Text('New')),
-              SizedBox(width: 8),
-              ElevatedButton(onPressed: _onUpgrade, child: Text('Upgrade')),
-              SizedBox(width: 8),
-              ElevatedButton(onPressed: _onDelete, child: Text('Delete')),
-            ],
+          const Text(
+            'Messages',
+            style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w600),
           ),
-          SizedBox(height: 16),
+          const Spacer(),
+          Icon(Icons.mail_outline, color: Colors.white, size: 24),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSearchAndPagination() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+      child: Row(
+        children: [
           Expanded(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  flex: 2,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+            child: TextField(
+              controller: _searchController,
+              onChanged: _onSearchChanged,
+              decoration: InputDecoration(
+                hintText: 'Search for a message',
+                hintStyle: TextStyle(color: Colors.grey[400]),
+                prefixIcon: Icon(Icons.search, color: Colors.grey[600]),
+                filled: true,
+                fillColor: Colors.grey[200],
+                contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 12),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide.none,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              border: Border.all(color: Colors.black38),
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: Text(
+              '$_currentPage/$_totalPages',
+              style: const TextStyle(color: Colors.black, fontSize: 14),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildButtonBar() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      child: Row(
+        children: [
+          _buildAddButton(),
+          if (_selectedIds.isNotEmpty) ...[
+            const SizedBox(width: 8),
+            if (_selectedIds.length == 1) ...[
+              _buildEditButton(),
+              const SizedBox(width: 8),
+            ],
+            _buildDeleteButton(),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAddButton() {
+    return ElevatedButton.icon(
+      onPressed: _showAddDialog,
+      icon: const Icon(Icons.add, size: 18),
+      label: const Text('Add'),
+      style: ElevatedButton.styleFrom(
+        backgroundColor: const Color.fromARGB(255, 15, 4, 224),
+        foregroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      ),
+    );
+  }
+
+  Widget _buildEditButton() {
+    return ElevatedButton.icon(
+      onPressed: _showEditDialog,
+      icon: const Icon(Icons.edit, size: 18),
+      label: const Text('Edit'),
+      style: ElevatedButton.styleFrom(
+        backgroundColor: Colors.orange,
+        foregroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      ),
+    );
+  }
+
+  Widget _buildDeleteButton() {
+    return ElevatedButton.icon(
+      onPressed: _onDelete,
+      icon: const Icon(Icons.delete, size: 18),
+      label: const Text('Delete'),
+      style: ElevatedButton.styleFrom(
+        backgroundColor: Colors.red,
+        foregroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      ),
+    );
+  }
+
+  Widget _buildTable() {
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (_messages.isEmpty) {
+      return Center(
+        child: Text(
+          _searchQuery.isNotEmpty ? 'No messages match your search' : 'No messages yet',
+          style: TextStyle(color: Colors.grey[500], fontSize: 16),
+        ),
+      );
+    }
+    return ListView.separated(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      itemCount: _messages.length,
+      separatorBuilder: (_, __) => const Divider(height: 1, color: Colors.black12),
+      itemBuilder: (context, index) {
+        final msg = _messages[index];
+        final isSelected = _selectedIds.contains(msg.id);
+        return Row(
+          children: [
+            SizedBox(
+              width: 48,
+              height: 48,
+              child: Checkbox(
+                value: isSelected,
+                onChanged: (val) {
+                  setState(() {
+                    if (val == true) {
+                      _selectedIds.add(msg.id);
+                    } else {
+                      _selectedIds.remove(msg.id);
+                    }
+                  });
+                },
+              ),
+            ),
+            Expanded(
+              child: GestureDetector(
+                onTap: () {
+                  setState(() {
+                    if (isSelected) {
+                      _selectedIds.remove(msg.id);
+                    } else {
+                      _selectedIds.add(msg.id);
+                    }
+                  });
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  child: Row(
                     children: [
-                      Row(
-                        children: [
-                          ElevatedButton(onPressed: _onShowAll, child: Text('Show ALL')),
-                          SizedBox(width: 8),
-                          ElevatedButton(onPressed: _onRandom, child: Text('Random')),
-                        ],
-                      ),
-                      SizedBox(height: 8),
                       Expanded(
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: SingleChildScrollView(
-                                child: DataTable(
-                                  columnSpacing: 10,
-                                  columns: [DataColumn(label: Text('Content'))],
-                                  rows: _messages
-                                      .map((m) => DataRow(cells: [
-                                            DataCell(Text(m.content)),
-                                          ]))
-                                      .toList(),
-                                ),
-                              ),
-                            ),
-                            SizedBox(width: 16),
-                            Expanded(
-                              child: SingleChildScrollView(
-                                child: DataTable(
-                                  columnSpacing: 10,
-                                  columns: [DataColumn(label: Text('Language'))],
-                                  rows: _messages
-                                      .map((m) => DataRow(cells: [
-                                            DataCell(Text(m.language)),
-                                          ]))
-                                      .toList(),
-                                ),
-                              ),
-                            ),
-                          ],
+                        child: Text(
+                          msg.content,
+                          style: const TextStyle(color: Colors.black, fontSize: 15),
                         ),
                       ),
+                      const SizedBox(width: 12),
+                      Text(
+                        msg.language,
+                        style: const TextStyle(color: Colors.black, fontSize: 15),
+                      ),
+                      const SizedBox(width: 8),
                     ],
                   ),
                 ),
-                SizedBox(width: 16),
-                Expanded(
-                  flex: 1,
-                  child: Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16.0),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            _boxTitle,
-                            style: TextStyle(
-                                fontSize: 18, fontWeight: FontWeight.bold),
-                          ),
-                          SizedBox(height: 12),
-                          TextField(
-                            controller: _contentController,
-                            decoration: InputDecoration(
-                              labelText: _mode == 'upgrade'
-                                  ? 'Original Content'
-                                  : 'Content',
-                              border: OutlineInputBorder(),
-                            ),
-                          ),
-                          if (_mode == 'upgrade') ...[
-                            SizedBox(height: 8),
-                            TextField(
-                              controller: _newContentController,
-                              decoration: InputDecoration(
-                                labelText: 'New Content',
-                                border: OutlineInputBorder(),
-                              ),
-                            ),
-                          ],
-                          SizedBox(height: 8),
-                          TextField(
-                            controller: _languageController,
-                            decoration: InputDecoration(
-                              labelText: 'Language',
-                              border: OutlineInputBorder(),
-                            ),
-                          ),
-                          SizedBox(height: 12),
-                          Align(
-                            alignment: Alignment.centerRight,
-                            child: ElevatedButton(
-                              onPressed: _mode != 'idle' ? _onApply : null,
-                              child: Text('Apply'),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ],
+              ),
             ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildPaginationBar() {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          IconButton(
+            onPressed: _currentPage > 1 ? () => _goToPage(_currentPage - 1) : null,
+            icon: const Icon(Icons.chevron_left),
+            color: _currentPage > 1 ? Colors.black54 : Colors.black12,
+          ),
+          const SizedBox(width: 8),
+          SizedBox(
+            width: 40,
+            child: TextField(
+              controller: _pageInputController,
+              keyboardType: TextInputType.number,
+              textAlign: TextAlign.center,
+              decoration: const InputDecoration(
+                border: InputBorder.none,
+                isDense: true,
+                contentPadding: EdgeInsets.zero,
+              ),
+              style: const TextStyle(fontSize: 16, color: Colors.black87),
+              onSubmitted: (value) {
+                var page = int.tryParse(value);
+                if (page != null) {
+                  _goToPage(page);
+                } else {
+                  _pageInputController.text = _currentPage.toString();
+                }
+              },
+            ),
+          ),
+          Text(
+            '/$_totalPages',
+            style: const TextStyle(fontSize: 16, color: Colors.black87),
+          ),
+          const SizedBox(width: 8),
+          IconButton(
+            onPressed: _currentPage < _totalPages ? () => _goToPage(_currentPage + 1) : null,
+            icon: const Icon(Icons.chevron_right),
+            color: _currentPage < _totalPages ? Colors.black54 : Colors.black12,
           ),
         ],
       ),
